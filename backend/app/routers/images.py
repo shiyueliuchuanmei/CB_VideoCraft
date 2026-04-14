@@ -42,16 +42,16 @@ async def get_image_models():
         "code": 200,
         "data": [
             {
-                "id": "seedream-2-0",
-                "name": "Seedream 2.0",
+                "id": "doubao-seedream-5-0-260128",
+                "name": "Seedream 5.0",
                 "description": "豆包图片生成模型",
                 "supported_ratios": ["1:1", "9:16", "16:9", "3:4", "4:3"],
                 "supported_resolutions": ["512", "768", "1024", "2048"],
             },
             {
-                "id": "seedream-2-0-pro",
-                "name": "Seedream 2.0 Pro",
-                "description": "豆包图片生成模型专业版",
+                "id": "doubao-seedream-4-0-250828",
+                "name": "Seedream 4.0",
+                "description": "豆包图片生成模型",
                 "supported_ratios": ["1:1", "9:16", "16:9", "3:4", "4:3"],
                 "supported_resolutions": ["512", "768", "1024", "2048"],
             },

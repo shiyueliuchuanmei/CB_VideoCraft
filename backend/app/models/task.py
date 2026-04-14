@@ -38,6 +38,9 @@ class Task(Base):
     
     # 输入图片（图生图/图生视频）
     input_image_url = Column(Text, default="")
+
+    # 豆包 API 返回的任务 ID（用于查询视频生成状态）
+    doubao_task_id = Column(String(128), default="")
     
     # 输出结果
     output_urls = Column(Text, default="")  # JSON 数组

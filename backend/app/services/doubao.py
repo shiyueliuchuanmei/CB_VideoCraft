@@ -14,6 +14,14 @@ from app.config import settings
 # 火山引擎 API 配置
 BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
+# 模型名到接入点 ID 的映射
+MODEL_ID_MAP = {
+    "doubao-seedream-5-0-260128": "ep-m-20260413142449-2268v",
+    "doubao-seedream-4-0-250828": "ep-m-20260409135402-vhrkr",
+    "doubao-seedance-2-0-260128": "ep-m-20260409135638-w6kcx",
+    "doubao-seedance-1-0-pro-250528": "ep-m-20260409181551-b652f",
+}
+
 
 async def _update_task_in_db(task_id: str, status: str, output_urls: list = None, error_message: str = None, processing_time: float = None):
     """更新任务状态到数据库"""
@@ -93,9 +101,18 @@ async def generate_image(
         # 更新状态为 processing
         await _update_task_in_db(task_id, "processing")
 
+        # 将模型名映射为接入点 ID
+        api_model = MODEL_ID_MAP.get(model, model)
+        if not api_model:
+            error_msg = f"模型 {model} 未配置接入点 ID，请在后台配置 SEEDREAM_MODEL_ID"
+            print(f"[Task {task_id}] {error_msg}")
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
+            return {"success": False, "error": error_msg}
+
         # 构建请求体
         request_body = {
-            "model": model,
+            "model": api_model,
             "prompt": prompt,
         }
 
@@ -239,9 +256,18 @@ async def generate_video(
                 "role": "reference_audio"
             })
 
+        # 将模型名映射为接入点 ID
+        api_model = MODEL_ID_MAP.get(model, model)
+        if not api_model:
+            error_msg = f"模型 {model} 未配置接入点 ID，请在后台配置 SEEDANCE_MODEL_ID"
+            print(f"[Task {task_id}] {error_msg}")
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
+            return {"success": False, "error": error_msg}
+
         # 构建请求体
         request_body = {
-            "model": model,
+            "model": api_model,
             "content": content,
             "generate_audio": with_audio,
             "ratio": ratio,
@@ -285,6 +311,19 @@ async def generate_video(
                 return {"success": False, "error": error_msg}
 
             print(f"[Task {task_id}] 视频任务创建成功，ID: {doubao_task_id}")
+
+            # 保存豆包任务 ID 到数据库
+            from app.database import AsyncSessionLocal
+            from sqlalchemy import text as sql_text
+            async with AsyncSessionLocal() as session:
+                try:
+                    await session.execute(
+                        sql_text("UPDATE tasks SET doubao_task_id = :doubao_task_id WHERE task_id = :task_id"),
+                        {"doubao_task_id": doubao_task_id, "task_id": task_id}
+                    )
+                    await session.commit()
+                except Exception as e:
+                    print(f"[Task {task_id}] 保存豆包任务ID失败: {e}")
 
             # 轮询查询任务状态
             video_result = await _poll_video_task(client, doubao_task_id, task_id)
@@ -349,15 +388,21 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
 
             print(f"[Task {task_id}] 任务状态: {status} (第 {i+1} 次查询)")
 
-            if status == "Succeeded":
+            if status and status.lower() == "succeeded":
                 # 任务完成，提取视频 URL
                 video_urls = []
-                content = result.get("content", [])
-                for item in content:
-                    if item.get("type") == "video_url":
-                        video_url = item.get("video_url", {}).get("url")
-                        if video_url:
-                            video_urls.append(video_url)
+                content = result.get("content", {})
+                # content 可能是 dict（新格式：content.video_url）或 list（旧格式）
+                if isinstance(content, dict):
+                    video_url = content.get("video_url")
+                    if video_url:
+                        video_urls.append(video_url)
+                elif isinstance(content, list):
+                    for item in content:
+                        if item.get("type") == "video_url":
+                            video_url = item.get("video_url", {}).get("url")
+                            if video_url:
+                                video_urls.append(video_url)
 
                 return {
                     "success": True,
@@ -366,7 +411,7 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
                     "raw_response": result
                 }
 
-            elif status == "Failed":
+            elif status and status.lower() == "failed":
                 # 任务失败
                 error_msg = result.get("error", {}).get("message", "未知错误")
                 print(f"[Task {task_id}] 视频生成失败: {error_msg}")
@@ -386,7 +431,7 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
 
 async def check_task_status(task_id: str, task_type: str) -> dict:
     """
-    查询任务状态 - 从数据库获取最新状态
+    查询任务状态 - 从数据库获取，如果是视频任务仍在处理中则主动查询豆包 API
 
     Args:
         task_id: 任务ID
@@ -401,7 +446,7 @@ async def check_task_status(task_id: str, task_type: str) -> dict:
     async with AsyncSessionLocal() as session:
         try:
             result = await session.execute(
-                text("SELECT status, output_urls, error_message FROM tasks WHERE task_id = :task_id"),
+                text("SELECT status, output_urls, error_message, doubao_task_id FROM tasks WHERE task_id = :task_id"),
                 {"task_id": task_id}
             )
             row = result.fetchone()
@@ -411,12 +456,32 @@ async def check_task_status(task_id: str, task_type: str) -> dict:
             import json as _json
             output_urls = _json.loads(row.output_urls) if row.output_urls else []
 
+            # 如果是视频任务仍在处理中，主动查询豆包 API
+            if task_type == "video" and row.status in ("pending", "processing") and row.doubao_task_id:
+                await _sync_video_status_from_api(row.doubao_task_id, task_id)
+                # 重新获取更新后的数据
+                result2 = await session.execute(
+                    text("SELECT status, output_urls, error_message FROM tasks WHERE task_id = :task_id"),
+                    {"task_id": task_id}
+                )
+                row2 = result2.fetchone()
+                if row2:
+                    output_urls = _json.loads(row2.output_urls) if row2.output_urls else []
+                    progress_map = {
+                        "pending": 0, "processing": 50,
+                        "completed": 100, "failed": 0, "cancelled": 0,
+                    }
+                    return {
+                        "task_id": task_id,
+                        "status": row2.status,
+                        "progress": progress_map.get(row2.status, 0),
+                        "output_urls": output_urls,
+                        "error_message": row2.error_message,
+                    }
+
             progress_map = {
-                "pending": 0,
-                "processing": 50,
-                "completed": 100,
-                "failed": 0,
-                "cancelled": 0,
+                "pending": 0, "processing": 50,
+                "completed": 100, "failed": 0, "cancelled": 0,
             }
 
             return {
@@ -429,3 +494,41 @@ async def check_task_status(task_id: str, task_type: str) -> dict:
         except Exception as e:
             print(f"查询任务状态失败: {e}")
             return {"task_id": task_id, "status": "error", "error": str(e)}
+
+
+async def _sync_video_status_from_api(doubao_task_id: str, task_id: str):
+    """从豆包 API 查询视频任务状态并同步到数据库"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{BASE_URL}/contents/generations/tasks/{doubao_task_id}",
+                headers={"Authorization": f"Bearer {settings.DOUBAO_API_KEY}"},
+                timeout=30.0
+            )
+            if response.status_code != 200:
+                print(f"[Task {task_id}] 查询豆包API失败: {response.status_code}")
+                return
+
+            result = response.json()
+            status = result.get("status")
+
+            if status and status.lower() == "succeeded":
+                video_urls = []
+                content = result.get("content", {})
+                if isinstance(content, dict):
+                    video_url = content.get("video_url")
+                    if video_url:
+                        video_urls.append(video_url)
+                elif isinstance(content, list):
+                    for item in content:
+                        if item.get("type") == "video_url":
+                            video_url = item.get("video_url", {}).get("url")
+                            if video_url:
+                                video_urls.append(video_url)
+                await _update_task_in_db(task_id, "completed", output_urls=video_urls)
+            elif status and status.lower() == "failed":
+                error_msg = result.get("error", {}).get("message", "未知错误")
+                await _update_task_in_db(task_id, "failed", error_message=error_msg)
+            # 其他状态（如 Submitted、Running）保持 processing 不变
+    except Exception as e:
+        print(f"[Task {task_id}] 同步豆包状态失败: {e}")

@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     DOUBAO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     SEEDREAM_ENDPOINT: str = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
     SEEDANCE_ENDPOINT: str = "https://ark.cn-beijing.volces.com/api/v3/videos/generations"
+
+    # 火山方舟模型接入点 ID（在方舟控制台创建接入点后填入）
+    SEEDREAM_MODEL_ID: str = ""  # Seedream 图片生成模型接入点 ID，如 ep-20250101xxxxx
+    SEEDANCE_MODEL_ID: str = ""  # Seedance 视频生成模型接入点 ID，如 ep-20250101xxxxx
     
     # JWT 配置
     JWT_ALGORITHM: str = "HS256"

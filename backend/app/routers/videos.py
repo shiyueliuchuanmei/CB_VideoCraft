@@ -39,9 +39,17 @@ async def get_video_models():
         "code": 200,
         "data": [
             {
-                "id": "seedance-2-0",
+                "id": "doubao-seedance-2-0-260128",
                 "name": "Seedance 2.0",
                 "description": "豆包视频生成模型",
+                "supported_ratios": ["9:16", "16:9", "1:1"],
+                "supported_resolutions": ["480p", "720p", "1080p"],
+                "max_duration": 10,
+            },
+            {
+                "id": "doubao-seedance-1-0-pro-250528",
+                "name": "Seedance 1.0 Pro",
+                "description": "豆包视频生成模型专业版",
                 "supported_ratios": ["9:16", "16:9", "1:1"],
                 "supported_resolutions": ["480p", "720p", "1080p"],
                 "max_duration": 10,
