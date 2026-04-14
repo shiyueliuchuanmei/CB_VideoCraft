@@ -240,3 +240,33 @@ async def get_video_generation(
             "completed_at": row.completed_at.isoformat() if row.completed_at and hasattr(row.completed_at, 'isoformat') else (row.completed_at if row.completed_at else None),
         }
     }
+
+
+@router.delete("/generations/{task_id}")
+async def delete_video_generation(
+    task_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """删除视频生成任务"""
+    try:
+        result = await db.execute(
+            text("SELECT * FROM tasks WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'video'"),
+            {"task_id": task_id, "user_id": current_user.id}
+        )
+
+        if not result.fetchone():
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        await db.execute(
+            text("DELETE FROM tasks WHERE task_id = :task_id AND user_id = :user_id"),
+            {"task_id": task_id, "user_id": current_user.id}
+        )
+        await db.commit()
+
+        return {"code": 200, "message": "任务已删除"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")

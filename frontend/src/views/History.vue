@@ -106,9 +106,20 @@
                 :src="record.thumbnailUrl" 
                 class="preview-image"
               />
-              <div v-else-if="record.type === 'video'" class="preview-video-placeholder">
-                <VideoCameraOutlined />
-                <span class="play-icon">▶</span>
+              <div v-else-if="record.type === 'video'" class="preview-video-cell">
+                <video
+                  v-if="record.url"
+                  :src="record.url"
+                  class="preview-video-thumb"
+                  muted
+                  preload="metadata"
+                  @loadeddata="onVideoThumbLoaded"
+                />
+                <span v-if="record.url" class="play-icon-overlay">▶</span>
+                <template v-else>
+                  <VideoCameraOutlined />
+                  <span class="play-icon">▶</span>
+                </template>
               </div>
               <div v-else class="preview-placeholder">
                 <FileImageOutlined />
@@ -166,14 +177,30 @@
       </a-table>
     </a-card>
 
+    <!-- 图片预览蒙层 -->
+    <div
+      v-if="imagePreviewVisible"
+      class="image-preview-overlay"
+      @click="imagePreviewVisible = false"
+    >
+      <img
+        :src="previewImageRecord?.url"
+        class="image-preview-img"
+        @click.stop
+      />
+      <div class="image-preview-close" @click="imagePreviewVisible = false">&times;</div>
+    </div>
+
     <!-- 视频预览弹窗 -->
     <a-modal
       v-model:visible="videoPreviewVisible"
       title="视频预览"
-      width="900px"
+      width="800px"
       :footer="null"
       :destroyOnClose="true"
-      class="video-preview-modal"
+      centered
+      :bodyStyle="{ padding: 0 }"
+      wrapClassName="video-preview-wrap"
     >
       <div class="video-preview-container" v-if="previewRecord">
         <div class="video-wrapper">
@@ -225,6 +252,8 @@
       title="任务详情"
       width="700px"
       :footer="null"
+      centered
+      wrapClassName="detail-modal-wrap"
     >
       <template v-if="currentRecord">
         <a-descriptions :column="2" bordered>
@@ -441,12 +470,23 @@ const downloadVideo = (record) => {
   message.success('开始下载视频')
 }
 
+// 视频缩略图加载完成 - 暂停在第一帧
+const onVideoThumbLoaded = (e) => {
+  const video = e.target
+  video.pause()
+}
+
+// 图片预览弹窗
+const imagePreviewVisible = ref(false)
+const previewImageRecord = ref(null)
+
 // 预览（点击缩略图）
 const handlePreview = (record) => {
   if (record.type === 'video') {
     openVideoPreview(record)
   } else {
-    handleView(record)
+    previewImageRecord.value = record
+    imagePreviewVisible.value = true
   }
 }
 
@@ -843,18 +883,42 @@ onUnmounted(() => {
       font-size: 24px;
     }
     
-    .preview-video-placeholder {
+    .preview-video-cell {
       width: 100%;
       height: 100%;
+      position: relative;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #1f1f1f;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #1f1f1f;
-      border-radius: 4px;
       color: #fff;
       font-size: 20px;
-      position: relative;
-      
+
+      .preview-video-thumb {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 4px;
+      }
+
+      .play-icon-overlay {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        font-size: 10px;
+        width: 18px;
+        height: 18px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        padding-left: 2px;
+      }
+
       .play-icon {
         position: absolute;
         font-size: 12px;
@@ -893,20 +957,19 @@ onUnmounted(() => {
     
     .preview-image-wrapper {
       width: 100%;
-      max-height: 400px;
-      overflow: hidden;
       display: flex;
       justify-content: center;
       align-items: center;
       background: #f5f5f5;
       border-radius: 8px;
+      padding: 12px;
     }
     
     .detail-image {
-      max-width: 100%;
-      max-height: 400px;
+      max-width: 500px;
+      max-height: 500px;
       object-fit: contain;
-      border-radius: 8px;
+      border-radius: 4px;
     }
     
     .video-container {
@@ -971,12 +1034,42 @@ onUnmounted(() => {
     text-align: center;
   }
 
-  // 视频预览弹窗样式
-  :deep(.video-preview-modal) {
-    .ant-modal-body {
-      padding: 0;
+  .image-preview-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    cursor: pointer;
+
+    .image-preview-img {
+      max-width: 500px;
+      max-height: 500px;
+      object-fit: contain;
+      border-radius: 4px;
+      cursor: default;
+    }
+
+    .image-preview-close {
+      position: absolute;
+      top: 16px;
+      right: 24px;
+      font-size: 28px;
+      color: #fff;
+      cursor: pointer;
+      line-height: 1;
+      &:hover {
+        color: #ccc;
+      }
     }
   }
+
+  // 视频预览弹窗样式
 
   .video-preview-container {
     .video-wrapper {
@@ -1041,6 +1134,32 @@ onUnmounted(() => {
       margin-bottom: 24px;
       font-size: 16px;
     }
+  }
+}
+</style>
+
+<style lang="less">
+/* 全局样式 - modal 渲染在 body 下，scoped 无法覆盖 */
+.video-preview-wrap {
+  .ant-modal-content {
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .ant-modal-body {
+    padding: 0;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.detail-modal-wrap {
+  .detail-image {
+    max-width: 500px !important;
+    max-height: 500px !important;
+    object-fit: contain;
+    border-radius: 4px;
   }
 }
 </style>
