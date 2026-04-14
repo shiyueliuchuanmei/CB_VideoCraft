@@ -45,7 +45,9 @@
         <div class="header-right">
           <a-dropdown>
             <a class="user-info">
-              <a-avatar :size="32" icon="<UserOutlined />" />
+              <a-avatar :size="32">
+                <template #icon><UserOutlined /></template>
+              </a-avatar>
               <span class="username">{{ userStore.userInfo?.name || '用户' }}</span>
               <DownOutlined />
             </a>

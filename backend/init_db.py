@@ -1,32 +1,37 @@
 """
 数据库初始化脚本
 """
-import asyncio
 import sqlite3
-from datetime import datetime
+from passlib.context import CryptContext
 
-DATABASE_URL = "./videocraft.db"
+DATABASE_URL = "./cb_videocraft.db"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def init_database():
     """初始化 SQLite 数据库"""
     conn = sqlite3.connect(DATABASE_URL)
     cursor = conn.cursor()
-    
-    # 创建用户表
+
+    # 创建用户表 - 与 ORM 模型对齐
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            email VARCHAR(100) UNIQUE NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            name VARCHAR(100) NOT NULL,
             hashed_password VARCHAR(255) NOT NULL,
-            avatar VARCHAR(255) DEFAULT '',
+            avatar VARCHAR(500) DEFAULT '',
             is_active BOOLEAN DEFAULT 1,
+            is_admin BOOLEAN DEFAULT 0,
+            doubao_api_key TEXT DEFAULT '',
+            storage_type VARCHAR(20) DEFAULT 'local',
+            oss_config TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP NULL
         )
     """)
-    
+
     # 创建任务表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
@@ -55,7 +60,7 @@ def init_database():
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     """)
-    
+
     # 创建索引
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)
@@ -69,17 +74,17 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)
     """)
-    
+
     # 插入测试用户（密码: test123）
-    # 密码使用 bcrypt 哈希: $2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I1O
+    test_password_hash = pwd_context.hash("test123")
     cursor.execute("""
-        INSERT OR IGNORE INTO users (id, username, email, hashed_password, is_active)
-        VALUES (1, 'test', 'test@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I1O', 1)
-    """)
-    
+        INSERT OR IGNORE INTO users (id, name, email, hashed_password, is_active)
+        VALUES (1, '测试用户', 'test@example.com', ?, 1)
+    """, (test_password_hash,))
+
     conn.commit()
     conn.close()
-    
+
     print(f"[OK] Database initialized: {DATABASE_URL}")
 
 

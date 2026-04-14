@@ -1,4 +1,4 @@
-# VideoCraft 后端启动脚本
+# CB_VideoCraft 后端启动脚本
 # 使用独立安装的 Python 3.11
 
 $PYTHON_PATH = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
@@ -30,7 +30,7 @@ if (-not (Test-Path ".venv\Lib\site-packages\fastapi")) {
 }
 
 # 初始化数据库（如果不存在）
-if (-not (Test-Path "videocraft.db")) {
+if (-not (Test-Path "cb_videocraft.db")) {
     Write-Host "🗄️ 初始化数据库..." -ForegroundColor Yellow
     python init_db.py
 }
@@ -39,8 +39,8 @@ Write-Host ""
 Write-Host "✅ 环境准备完成！" -ForegroundColor Green
 Write-Host ""
 Write-Host "启动命令:" -ForegroundColor Cyan
-Write-Host "  python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+Write-Host "  python -m uvicorn main:app --reload --host 0.0.0.0 --port 8001"
 Write-Host ""
 
 # 启动服务
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8001

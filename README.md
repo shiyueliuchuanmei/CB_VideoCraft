@@ -1,4 +1,4 @@
-# VideoCraft 🎬
+# CB_VideoCraft 🎬
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Vue 3](https://img.shields.io/badge/Vue-3.4+-green.svg)](https://vuejs.org/)
@@ -8,7 +8,7 @@
 >
 > 由 [广州十月六传媒有限公司](mailto:McrobbieStruzik518@gmail.com) 开发维护
 
-![VideoCraft Screenshot](./screenshots/dashboard.png)
+![CB_VideoCraft Screenshot](./screenshots/dashboard.png)
 
 ## ✨ 功能特性
 
@@ -120,28 +120,28 @@ cp .env.example .env
 **`.env` 配置示例:**
 ```env
 # 应用配置
-APP_NAME=VideoCraft
+APP_NAME=CB_VideoCraft
 DEBUG=true
 SECRET_KEY=your-secret-key-here
 
 # 数据库
-DATABASE_URL=sqlite+aiosqlite:///./videocraft.db
+DATABASE_URL=sqlite+aiosqlite:///./cb_videocraft.db
 
 # 火山引擎 API
 DOUBAO_API_KEY=your-doubao-api-key-here
 DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 
 # CORS
-CORS_ORIGINS=["http://localhost:5173", "http://localhost:5174"]
+CORS_ORIGINS=["http://localhost:5174"]
 ```
 
 ```bash
 # 启动后端服务
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-后端服务将运行在: http://localhost:8000
-API 文档: http://localhost:8000/docs
+后端服务将运行在: http://localhost:8001
+API 文档: http://localhost:8001/docs
 
 ### 3. 前端配置
 
@@ -156,11 +156,11 @@ npm install
 npm run dev
 ```
 
-前端服务将运行在: http://localhost:5173
+前端服务将运行在: http://localhost:5174
 
 ### 4. 开始使用
 
-1. 打开浏览器访问 http://localhost:5173
+1. 打开浏览器访问 http://localhost:5174
 2. 注册账号或登录
 3. 进入"视频生成"或"图片生成"页面
 4. 输入提示词，点击"开始生成"

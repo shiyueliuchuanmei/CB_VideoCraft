@@ -3,7 +3,7 @@
     <div class="login-container">
       <div class="login-header">
         <img src="@/assets/logo.svg" alt="logo" class="logo" />
-        <h1>VideoCraft</h1>
+        <h1>CB_VideoCraft</h1>
         <p>电商视频智能创作平台</p>
       </div>
       
@@ -133,7 +133,7 @@
       </a-card>
       
       <div class="login-footer">
-        <p>© 2026 VideoCraft. All rights reserved.</p>
+        <p>© 2026 CB_VideoCraft. All rights reserved.</p>
       </div>
     </div>
     

@@ -35,5 +35,7 @@ async def get_db():
 
 async def init_db():
     """初始化数据库"""
+    # 导入模型以注册到 Base.metadata
+    from app.models import User, Task  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

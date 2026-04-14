@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢您对 VideoCraft 的关注！我们欢迎各种形式的贡献。
+感谢您对 CB_VideoCraft 的关注！我们欢迎各种形式的贡献。
 
 ## 如何贡献
 
@@ -97,7 +97,7 @@ Fork → Clone → Branch → Develop → Test → Commit → Push → PR
 ## 联系我们
 
 - GitHub Issues: [提交问题](https://github.com/yourusername/video-craft/issues)
-- Email: support@videocraft.app
+- Email: support@cb-videocraft.app
 
 ## 许可证
 

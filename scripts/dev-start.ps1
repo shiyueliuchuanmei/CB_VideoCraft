@@ -1,7 +1,7 @@
-# VideoCraft 开发环境启动脚本 (Windows PowerShell)
+# CB_VideoCraft 开发环境启动脚本 (Windows PowerShell)
 # 一键启动前后端服务
 
-Write-Host "🚀 启动 VideoCraft 开发环境..." -ForegroundColor Green
+Write-Host "🚀 启动 CB_VideoCraft 开发环境..." -ForegroundColor Green
 
 # 获取项目根目录
 $PROJECT_ROOT = Split-Path -Parent $PSScriptRoot
@@ -36,11 +36,11 @@ Write-Host "安装后端依赖..."
 pip install -q -r requirements.txt
 
 # 启动后端服务
-Write-Host "启动后端服务 (http://localhost:8000)..."
+Write-Host "启动后端服务 (http://localhost:8001)..."
 $BACKEND_JOB = Start-Job -ScriptBlock {
     Set-Location $args[0]
     & .\venv\Scripts\Activate.ps1
-    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    uvicorn main:app --reload --host 0.0.0.0 --port 8001
 } -ArgumentList "$PROJECT_ROOT\backend"
 
 # 等待后端启动
@@ -65,7 +65,7 @@ if (-not (Test-Path "node_modules")) {
 }
 
 # 启动前端服务
-Write-Host "启动前端服务 (http://localhost:5173)..."
+Write-Host "启动前端服务 (http://localhost:5174)..."
 $FRONTEND_JOB = Start-Job -ScriptBlock {
     Set-Location $args[0]
     npm run dev
@@ -85,11 +85,11 @@ Write-Host "✅ 前端服务已启动" -ForegroundColor Green
 
 # 输出访问信息
 Write-Host ""
-Write-Host "🎉 VideoCraft 开发环境启动成功！" -ForegroundColor Green
+Write-Host "🎉 CB_VideoCraft 开发环境启动成功！" -ForegroundColor Green
 Write-Host ""
-Write-Host "📱 前端地址: http://localhost:5173"
-Write-Host "🔌 后端地址: http://localhost:8000"
-Write-Host "📚 API 文档: http://localhost:8000/docs"
+Write-Host "📱 前端地址: http://localhost:5174"
+Write-Host "🔌 后端地址: http://localhost:8001"
+Write-Host "📚 API 文档: http://localhost:8001/docs"
 Write-Host ""
 Write-Host "按 Ctrl+C 停止所有服务" -ForegroundColor Yellow
 

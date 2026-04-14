@@ -1,14 +1,17 @@
 """
-VideoCraft 后端入口文件
+CB_VideoCraft 后端入口文件
 """
+import os
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
 from app.routers import auth, users, images, videos, tasks
+from app.routers.auth import get_current_user
+from app.utils.storage import save_file, generate_filename, ensure_directory
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -35,8 +38,34 @@ app.include_router(images.router, prefix="/api/images", tags=["图片"])
 app.include_router(videos.router, prefix="/api/videos", tags=["视频"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务"])
 
+
+# 文件上传接口
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_user)
+):
+    """上传文件"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+
+    # 检查文件大小（最大 10MB）
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件大小不能超过 10MB")
+
+    # 确保上传目录存在
+    ensure_directory(settings.LOCAL_STORAGE_PATH)
+
+    # 保存文件
+    url = await save_file(content, file.filename, folder="uploads")
+
+    return {"code": 200, "data": {"url": url}}
+
+
 # 静态文件
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+os.makedirs(settings.LOCAL_STORAGE_PATH, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.LOCAL_STORAGE_PATH), name="uploads")
 
 
 @app.on_event("startup")

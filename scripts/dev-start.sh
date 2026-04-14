@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# VideoCraft 开发环境启动脚本
+# CB_VideoCraft 开发环境启动脚本
 # 一键启动前后端服务
 
 set -e
 
-echo "🚀 启动 VideoCraft 开发环境..."
+echo "🚀 启动 CB_VideoCraft 开发环境..."
 
 # 颜色定义
 RED='\033[0;31m'
@@ -60,8 +60,8 @@ echo "安装后端依赖..."
 pip install -q -r requirements.txt
 
 # 启动后端服务（后台运行）
-echo "启动后端服务 (http://localhost:8000)..."
-uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+echo "启动后端服务 (http://localhost:8001)..."
+uvicorn main:app --reload --host 0.0.0.0 --port 8001 &
 BACKEND_PID=$!
 
 # 等待后端启动
@@ -86,7 +86,7 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # 启动前端服务
-echo "启动前端服务 (http://localhost:5173)..."
+echo "启动前端服务 (http://localhost:5174)..."
 npm run dev &
 FRONTEND_PID=$!
 
@@ -104,11 +104,11 @@ echo -e "${GREEN}✅ 前端服务已启动 (PID: $FRONTEND_PID)${NC}"
 
 # 输出访问信息
 echo ""
-echo -e "${GREEN}🎉 VideoCraft 开发环境启动成功！${NC}"
+echo -e "${GREEN}🎉 CB_VideoCraft 开发环境启动成功！${NC}"
 echo ""
-echo "📱 前端地址: http://localhost:5173"
-echo "🔌 后端地址: http://localhost:8000"
-echo "📚 API 文档: http://localhost:8000/docs"
+echo "📱 前端地址: http://localhost:5174"
+echo "🔌 后端地址: http://localhost:8001"
+echo "📚 API 文档: http://localhost:8001/docs"
 echo ""
 echo "按 Ctrl+C 停止所有服务"
 

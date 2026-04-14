@@ -15,6 +15,47 @@ from app.config import settings
 BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
 
+async def _update_task_in_db(task_id: str, status: str, output_urls: list = None, error_message: str = None, processing_time: float = None):
+    """更新任务状态到数据库"""
+    from app.database import AsyncSessionLocal
+    from sqlalchemy import text
+
+    async with AsyncSessionLocal() as session:
+        try:
+            update_fields = ["status = :status", "updated_at = :updated_at"]
+            params = {
+                "task_id": task_id,
+                "status": status,
+                "updated_at": datetime.utcnow(),
+            }
+
+            if output_urls is not None:
+                update_fields.append("output_urls = :output_urls")
+                params["output_urls"] = json.dumps(output_urls, ensure_ascii=False)
+
+            if error_message is not None:
+                update_fields.append("error_message = :error_message")
+                params["error_message"] = error_message
+
+            if processing_time is not None:
+                update_fields.append("processing_time = :processing_time")
+                params["processing_time"] = processing_time
+
+            if status in ("completed", "failed", "cancelled"):
+                update_fields.append("completed_at = :completed_at")
+                params["completed_at"] = datetime.utcnow()
+
+            set_clause = ", ".join(update_fields)
+            await session.execute(
+                text(f"UPDATE tasks SET {set_clause} WHERE task_id = :task_id"),
+                params
+            )
+            await session.commit()
+        except Exception as e:
+            print(f"[Task {task_id}] 更新数据库失败: {e}")
+            await session.rollback()
+
+
 async def generate_image(
     task_id: str,
     model: str,
@@ -29,7 +70,7 @@ async def generate_image(
 ):
     """
     生成图片 - 调用火山引擎 Seedream API
-    
+
     Args:
         task_id: 任务ID
         model: 模型名称 (如: doubao-seedream-4-0-250828)
@@ -42,22 +83,26 @@ async def generate_image(
         image_url: 参考图片URL（图生图模式）
         user_id: 用户ID
     """
+    start_time = datetime.utcnow()
     try:
         print(f"[Task {task_id}] 开始生成图片...")
         print(f"  Model: {model}")
         print(f"  Prompt: {prompt}")
         print(f"  Mode: {mode}")
-        
+
+        # 更新状态为 processing
+        await _update_task_in_db(task_id, "processing")
+
         # 构建请求体
         request_body = {
             "model": model,
             "prompt": prompt,
         }
-        
+
         # 添加可选参数
         if negative_prompt:
             request_body["negative_prompt"] = negative_prompt
-        
+
         # 调用火山引擎 API
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -69,35 +114,42 @@ async def generate_image(
                 json=request_body,
                 timeout=300.0
             )
-            
+
             print(f"[Task {task_id}] Response: {response.status_code}")
             print(f"[Task {task_id}] Body: {response.text}")
-            
+
             if response.status_code != 200:
                 error_msg = f"API 调用失败: {response.status_code} - {response.text}"
                 print(f"[Task {task_id}] {error_msg}")
+                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
                 return {"success": False, "error": error_msg}
-            
+
             result = response.json()
             print(f"[Task {task_id}] 图片生成成功")
-            
+
             # 提取生成的图片 URL
             image_urls = []
             if "data" in result:
                 for item in result["data"]:
                     if "url" in item:
                         image_urls.append(item["url"])
-            
+
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            await _update_task_in_db(task_id, "completed", output_urls=image_urls, processing_time=processing_time)
+
             return {
                 "success": True,
                 "task_id": task_id,
                 "output_urls": image_urls,
                 "raw_response": result
             }
-            
+
     except Exception as e:
         error_msg = f"图片生成失败: {str(e)}"
         print(f"[Task {task_id}] {error_msg}")
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
         return {"success": False, "error": error_msg}
 
 
@@ -119,7 +171,7 @@ async def generate_video(
 ):
     """
     生成视频 - 调用火山引擎 Seedance API (新格式)
-    
+
     Args:
         task_id: 任务ID
         model: 模型名称 (如: doubao-seedance-2-0-260128)
@@ -136,23 +188,27 @@ async def generate_video(
         video_url: 参考视频URL
         audio_url: 参考音频URL
     """
+    start_time = datetime.utcnow()
     try:
         print(f"[Task {task_id}] 开始生成视频...")
         print(f"  Model: {model}")
         print(f"  Prompt: {prompt[:100]}...")
         print(f"  Mode: {mode}")
         print(f"  Duration: {duration}s")
-        
+
+        # 更新状态为 processing
+        await _update_task_in_db(task_id, "processing")
+
         # 构建 content 数组
         content = []
-        
+
         # 添加文本提示
         if prompt:
             content.append({
                 "type": "text",
                 "text": prompt
             })
-        
+
         # 添加参考图片
         if image_url:
             content.append({
@@ -162,7 +218,7 @@ async def generate_video(
                 },
                 "role": "reference_image"
             })
-        
+
         # 添加参考视频
         if video_url:
             content.append({
@@ -172,7 +228,7 @@ async def generate_video(
                 },
                 "role": "reference_video"
             })
-        
+
         # 添加参考音频
         if audio_url:
             content.append({
@@ -182,7 +238,7 @@ async def generate_video(
                 },
                 "role": "reference_audio"
             })
-        
+
         # 构建请求体
         request_body = {
             "model": model,
@@ -192,9 +248,9 @@ async def generate_video(
             "duration": duration,
             "watermark": False
         }
-        
+
         print(f"[Task {task_id}] Request: {json.dumps(request_body, ensure_ascii=False, indent=2)}")
-        
+
         # 调用火山引擎 API 创建任务
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -206,52 +262,73 @@ async def generate_video(
                 json=request_body,
                 timeout=60.0
             )
-            
+
             print(f"[Task {task_id}] Response: {response.status_code}")
             print(f"[Task {task_id}] Body: {response.text}")
-            
+
             if response.status_code != 200:
                 error_msg = f"API 调用失败: {response.status_code} - {response.text}"
                 print(f"[Task {task_id}] {error_msg}")
+                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
                 return {"success": False, "error": error_msg}
-            
+
             result = response.json()
-            
+
             # 获取任务 ID
             doubao_task_id = result.get("id")
             if not doubao_task_id:
                 error_msg = "API 响应中缺少任务 ID"
                 print(f"[Task {task_id}] {error_msg}")
+                processing_time = (datetime.utcnow() - start_time).total_seconds()
+                await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
                 return {"success": False, "error": error_msg}
-            
+
             print(f"[Task {task_id}] 视频任务创建成功，ID: {doubao_task_id}")
-            
+
             # 轮询查询任务状态
             video_result = await _poll_video_task(client, doubao_task_id, task_id)
-            
+
+            # 更新数据库
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            if video_result.get("success"):
+                await _update_task_in_db(
+                    task_id, "completed",
+                    output_urls=video_result.get("output_urls", []),
+                    processing_time=processing_time
+                )
+            else:
+                await _update_task_in_db(
+                    task_id, "failed",
+                    error_message=video_result.get("error", "未知错误"),
+                    processing_time=processing_time
+                )
+
             return video_result
-            
+
     except Exception as e:
         error_msg = f"视频生成失败: {str(e)}"
         print(f"[Task {task_id}] {error_msg}")
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        await _update_task_in_db(task_id, "failed", error_message=error_msg, processing_time=processing_time)
         return {"success": False, "error": error_msg}
 
 
 async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_id: str) -> Dict[str, Any]:
     """
     轮询查询视频生成任务状态
-    
+
     Args:
         client: HTTP 客户端
         doubao_task_id: 火山引擎任务 ID
         task_id: 本地任务 ID
-    
+
     Returns:
         视频生成结果
     """
     max_retries = 120  # 最多轮询 120 次（10分钟）
     retry_interval = 5  # 每次间隔 5 秒
-    
+
     for i in range(max_retries):
         try:
             response = await client.get(
@@ -261,17 +338,17 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
                 },
                 timeout=30.0
             )
-            
+
             if response.status_code != 200:
                 print(f"[Task {task_id}] 查询任务状态失败: {response.status_code}")
                 await asyncio.sleep(retry_interval)
                 continue
-            
+
             result = response.json()
             status = result.get("status")
-            
+
             print(f"[Task {task_id}] 任务状态: {status} (第 {i+1} 次查询)")
-            
+
             if status == "Succeeded":
                 # 任务完成，提取视频 URL
                 video_urls = []
@@ -281,27 +358,27 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
                         video_url = item.get("video_url", {}).get("url")
                         if video_url:
                             video_urls.append(video_url)
-                
+
                 return {
                     "success": True,
                     "task_id": task_id,
                     "output_urls": video_urls,
                     "raw_response": result
                 }
-            
+
             elif status == "Failed":
                 # 任务失败
                 error_msg = result.get("error", {}).get("message", "未知错误")
                 print(f"[Task {task_id}] 视频生成失败: {error_msg}")
                 return {"success": False, "error": error_msg}
-            
+
             # 任务仍在处理中，继续轮询
             await asyncio.sleep(retry_interval)
-            
+
         except Exception as e:
             print(f"[Task {task_id}] 查询任务状态异常: {e}")
             await asyncio.sleep(retry_interval)
-    
+
     # 超时
     print(f"[Task {task_id}] 视频生成超时")
     return {"success": False, "error": "视频生成超时"}
@@ -309,18 +386,46 @@ async def _poll_video_task(client: httpx.AsyncClient, doubao_task_id: str, task_
 
 async def check_task_status(task_id: str, task_type: str) -> dict:
     """
-    查询任务状态
-    
+    查询任务状态 - 从数据库获取最新状态
+
     Args:
         task_id: 任务ID
         task_type: 任务类型 (image, video)
-    
+
     Returns:
         任务状态信息
     """
-    # 这里可以实现查询逻辑
-    return {
-        "task_id": task_id,
-        "status": "processing",
-        "progress": 50,
-    }
+    from app.database import AsyncSessionLocal
+    from sqlalchemy import text
+
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await session.execute(
+                text("SELECT status, output_urls, error_message FROM tasks WHERE task_id = :task_id"),
+                {"task_id": task_id}
+            )
+            row = result.fetchone()
+            if not row:
+                return {"task_id": task_id, "status": "not_found"}
+
+            import json as _json
+            output_urls = _json.loads(row.output_urls) if row.output_urls else []
+
+            progress_map = {
+                "pending": 0,
+                "processing": 50,
+                "completed": 100,
+                "failed": 0,
+                "cancelled": 0,
+            }
+
+            return {
+                "task_id": task_id,
+                "status": row.status,
+                "progress": progress_map.get(row.status, 0),
+                "output_urls": output_urls,
+                "error_message": row.error_message,
+            }
+        except Exception as e:
+            print(f"查询任务状态失败: {e}")
+            return {"task_id": task_id, "status": "error", "error": str(e)}

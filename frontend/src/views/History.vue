@@ -7,13 +7,13 @@
           <a-statistic title="总任务数" :value="stats.total" />
         </a-col>
         <a-col :span="6">
-          <a-statistic title="已完成" :value="stats.completed" value-style="color: #52c41a" />
+          <a-statistic title="已完成" :value="stats.completed" :value-style="{ color: '#52c41a' }" />
         </a-col>
         <a-col :span="6">
-          <a-statistic title="生成中" :value="stats.processing" value-style="color: #1890ff" />
+          <a-statistic title="生成中" :value="stats.processing" :value-style="{ color: '#1890ff' }" />
         </a-col>
         <a-col :span="6">
-          <a-statistic title="失败" :value="stats.failed" value-style="color: #ff4d4f" />
+          <a-statistic title="失败" :value="stats.failed" :value-style="{ color: '#ff4d4f' }" />
         </a-col>
       </a-row>
 
@@ -93,6 +93,10 @@
             <a-tag :color="record.type === 'image' ? 'blue' : 'purple'">
               {{ record.type === 'image' ? '图片' : '视频' }}
             </a-tag>
+          </template>
+          
+          <template v-else-if="column.key === 'taskId'">
+            <a-typography-text copyable class="task-id-cell">{{ record.id }}</a-typography-text>
           </template>
           
           <template v-else-if="column.key === 'preview'">
@@ -308,6 +312,7 @@ import {
 } from '@ant-design/icons-vue'
 import { getVideoTaskList, deleteVideoTask } from '@/api/video'
 import { getImageTaskList, deleteImageTask } from '@/api/image'
+import { getTaskList, getTaskStats } from '@/api/user'
 
 // 统计数据
 const stats = reactive({
@@ -331,6 +336,11 @@ const columns = [
     title: '类型',
     key: 'type',
     width: 80,
+  },
+  {
+    title: '任务ID',
+    key: 'taskId',
+    width: 180,
   },
   {
     title: '预览',
@@ -423,7 +433,7 @@ const downloadVideo = (record) => {
   // 创建下载链接
   const link = document.createElement('a')
   link.href = record.url
-  link.download = `videocraft-${record.id}.mp4`
+  link.download = `cb-videocraft-${record.id}.mp4`
   link.target = '_blank'
   document.body.appendChild(link)
   link.click()
@@ -508,128 +518,118 @@ const handleTableChange = (pag) => {
   loadData()
 }
 
-// 示例视频URL（仅用于演示，实际项目中应从API获取）
-const DEMO_VIDEO_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
-
-// 加载数据 - 先使用模拟数据（后端API有性能问题待修复）
+// 加载数据
 const loadData = async () => {
   loading.value = true
   try {
-    // 尝试获取真实数据，失败则使用模拟数据
-    let videoTasks = []
-    let imageTasks = []
-    
-    try {
-      const videoRes = await getVideoTaskList({
-        page: pagination.current,
-        page_size: pagination.pageSize,
-      })
-      videoTasks = (videoRes.data?.tasks || []).map(task => ({
-        id: task.id,
-        type: 'video',
-        prompt: task.prompt,
-        status: task.status,
-        model: task.model || 'doubao-seedance-2-0-260128',
-        createdAt: task.created_at,
-        completedAt: task.completed_at,
-        url: task.url,
-        thumbnailUrl: null,
-        progress: calculateProgress(task.status, task.created_at),
-        estimatedTime: calculateEstimatedTime(task.status, task.created_at),
-      }))
-    } catch (e) {
-      console.log('视频API暂时不可用，使用模拟数据')
-    }
-    
-    try {
-      const imageRes = await getImageTaskList({
-        page: pagination.current,
-        page_size: pagination.pageSize,
-      })
-      imageTasks = (imageRes.data?.tasks || []).map(task => ({
-        id: task.id,
-        type: 'image',
-        prompt: task.prompt,
-        status: task.status,
-        model: task.model || 'doubao-seedream-4-0-250828',
-        createdAt: task.created_at,
-        completedAt: task.completed_at,
-        url: task.url,
-        thumbnailUrl: task.url,
-        progress: calculateProgress(task.status, task.created_at),
-        estimatedTime: calculateEstimatedTime(task.status, task.created_at),
-      }))
-    } catch (e) {
-      console.log('图片API暂时不可用，使用模拟数据')
-    }
+    // 使用统一的任务列表接口
+    let allTasks = []
 
-    // 如果没有真实数据，使用模拟数据
-    if (videoTasks.length === 0 && imageTasks.length === 0) {
-      videoTasks = [
-        {
-          id: 'vid_e064d35a87574add',
+    try {
+      const params = {
+        page: pagination.current,
+        page_size: pagination.pageSize,
+      }
+      if (filter.type) params.task_type = filter.type
+
+      const res = await getTaskList(params)
+      const items = res.items || []
+
+      allTasks = items.map(task => {
+        const outputUrls = task.output_urls || []
+        const firstUrl = outputUrls.length > 0 ? outputUrls[0] : null
+        return {
+          id: task.task_id,
+          type: task.task_type,
+          prompt: task.prompt,
+          status: task.status,
+          model: task.model,
+          mode: task.mode,
+          ratio: task.ratio,
+          createdAt: task.created_at,
+          completedAt: task.completed_at,
+          url: firstUrl,
+          thumbnailUrl: task.task_type === 'image' ? firstUrl : null,
+          outputUrls: outputUrls,
+          progress: calculateProgress(task.status, task.created_at),
+          estimatedTime: calculateEstimatedTime(task.status, task.created_at),
+        }
+      })
+
+      pagination.total = res.total || allTasks.length
+    } catch (e) {
+      // 降级：分别请求图片和视频
+      let videoTasks = []
+      let imageTasks = []
+
+      try {
+        const videoRes = await getVideoTaskList({
+          page: pagination.current,
+          page_size: pagination.pageSize,
+        })
+        videoTasks = (videoRes.tasks || videoRes.data?.tasks || []).map(task => ({
+          id: task.id || task.task_id,
           type: 'video',
-          prompt: '一只可爱的橘猫在草地上玩耍',
-          status: 'processing',
-          model: 'doubao-seedance-2-0-260128',
-          createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-          completedAt: null,
-          url: null,
+          prompt: task.prompt,
+          status: task.status,
+          model: task.model,
+          createdAt: task.created_at,
+          completedAt: task.completed_at,
+          url: task.url || (task.output_urls && task.output_urls[0]) || null,
           thumbnailUrl: null,
-          progress: 35,
-          estimatedTime: '预计3分30秒',
-        },
-        {
-          id: 'vid_bae1f631c607438b',
-          type: 'video',
-          prompt: '一只可爱的猫咪在草地上玩耍',
-          status: 'pending',
-          model: 'doubao-seedance-2-0-260128',
-          createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-          completedAt: null,
-          url: null,
-          thumbnailUrl: null,
-          progress: 0,
-          estimatedTime: '预计5分钟',
-        },
-      ]
-      imageTasks = [
-        {
-          id: 'img_001',
+          outputUrls: task.output_urls || [],
+          progress: calculateProgress(task.status, task.created_at),
+          estimatedTime: calculateEstimatedTime(task.status, task.created_at),
+        }))
+      } catch (e2) {
+        console.log('视频API暂时不可用')
+      }
+
+      try {
+        const imageRes = await getImageTaskList({
+          page: pagination.current,
+          page_size: pagination.pageSize,
+        })
+        imageTasks = (imageRes.items || imageRes.data?.tasks || []).map(task => ({
+          id: task.task_id || task.id,
           type: 'image',
-          prompt: '高端化妆品产品图，白色背景',
-          status: 'completed',
-          model: 'doubao-seedream-4-0-250828',
-          createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          completedAt: new Date(Date.now() - 28 * 60 * 1000).toISOString(),
-          url: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=1024&h=1024&fit=crop',
-          thumbnailUrl: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=120&h=120&fit=crop',
-          progress: 100,
-          estimatedTime: null,
-        },
-      ]
-    }
+          prompt: task.prompt,
+          status: task.status,
+          model: task.model,
+          createdAt: task.created_at,
+          completedAt: task.completed_at,
+          url: (task.output_urls && task.output_urls[0]) || task.url || null,
+          thumbnailUrl: (task.output_urls && task.output_urls[0]) || null,
+          outputUrls: task.output_urls || [],
+          progress: calculateProgress(task.status, task.created_at),
+          estimatedTime: calculateEstimatedTime(task.status, task.created_at),
+        }))
+      } catch (e2) {
+        console.log('图片API暂时不可用')
+      }
 
-    // 合并并排序（最新的在前）
-    let allTasks = [...videoTasks, ...imageTasks]
-    allTasks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      allTasks = [...videoTasks, ...imageTasks]
+      allTasks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    }
 
     // 应用筛选
     if (filter.type) {
       allTasks = allTasks.filter(t => t.type === filter.type)
     }
+    if (filter.status) {
+      allTasks = allTasks.filter(t => t.status === filter.status)
+    }
     if (filter.keyword) {
       const keyword = filter.keyword.toLowerCase()
-      allTasks = allTasks.filter(t => 
+      allTasks = allTasks.filter(t =>
         t.prompt?.toLowerCase().includes(keyword)
       )
     }
 
     taskList.value = allTasks
-    pagination.total = allTasks.length
 
     // 更新统计
-    stats.total = allTasks.length
+    stats.total = pagination.total || allTasks.length
     stats.completed = allTasks.filter(t => t.status === 'completed').length
     stats.processing = allTasks.filter(t => t.status === 'processing' || t.status === 'pending').length
     stats.failed = allTasks.filter(t => t.status === 'failed').length
@@ -706,7 +706,7 @@ const handleDownload = (record) => {
     // 图片尝试下载
     const link = document.createElement('a')
     link.href = record.url
-    link.download = `videocraft-${record.id}.jpg`
+    link.download = `cb-videocraft-${record.id}.jpg`
     link.target = '_blank'
     document.body.appendChild(link)
     link.click()
@@ -877,6 +877,11 @@ onUnmounted(() => {
     text-overflow: ellipsis;
     white-space: nowrap;
     display: inline-block;
+  }
+
+  .task-id-cell {
+    font-family: monospace;
+    font-size: 11px;
   }
 
   .detail-preview {

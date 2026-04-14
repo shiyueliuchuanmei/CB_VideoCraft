@@ -124,11 +124,16 @@
 
           <!-- 生成中 -->
           <div v-if="generating" class="generating">
-            <a-spin size="large" tip="正在生成图片..." />
+            <a-spin size="large" />
+            <p class="generating-hint">正在生成图片，请稍候...</p>
+            <a-progress :percent="progress" :status="progress < 100 ? 'active' : 'success'" style="max-width: 400px;" />
+            <p v-if="currentTaskId" class="task-id-hint">
+              任务ID: <a-typography-text copyable>{{ currentTaskId }}</a-typography-text>
+            </p>
           </div>
 
           <!-- 结果列表 -->
-          <a-row :gutter="16" v-else>
+          <a-row :gutter="16" v-if="!generating && results.length > 0">
             <a-col
               :span="12"
               v-for="(item, index) in results"
@@ -149,6 +154,33 @@
               <p class="image-prompt">{{ item.prompt }}</p>
             </a-col>
           </a-row>
+
+          <!-- 最近任务 -->
+          <a-divider v-if="recentTasks.length > 0 && !generating && results.length === 0" />
+          <div v-if="recentTasks.length > 0 && !generating && results.length === 0">
+            <h4 style="margin-bottom: 12px;">最近任务</h4>
+            <a-list :data-source="recentTasks" size="small">
+              <template #renderItem="{ item }">
+                <a-list-item>
+                  <a-list-item-meta>
+                    <template #title>
+                      {{ truncateText(item.prompt, 30) }}
+                      <a-tag :color="getStatusColor(item.status)" size="small" style="margin-left: 8px;">
+                        {{ getStatusText(item.status) }}
+                      </a-tag>
+                    </template>
+                    <template #description>
+                      <span class="task-id-label">ID: {{ item.task_id }}</span> · {{ formatTime(item.created_at) }}
+                    </template>
+                  </a-list-item-meta>
+                  <template #actions>
+                    <a-button type="link" size="small" @click="copyTaskId(item.task_id)">复制ID</a-button>
+                    <a-button type="link" size="small" @click="viewResult(item)" v-if="item.status === 'completed' && item.output_urls?.length">查看结果</a-button>
+                  </template>
+                </a-list-item>
+              </template>
+            </a-list>
+          </div>
         </a-card>
       </a-col>
     </a-row>
@@ -156,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   InboxOutlined,
@@ -165,12 +197,13 @@ import {
   DownloadOutlined,
   CopyOutlined,
 } from '@ant-design/icons-vue'
-import { createImageTask } from '@/api/image'
+import { createImageTask, getImageTask, getImageTaskList } from '@/api/image'
+import dayjs from 'dayjs'
 
 // 表单数据
 const form = reactive({
   mode: 'text2image',
-  model: 'seedream-2.0',
+  model: 'doubao-seedream-4-0-250828',
   prompt: '',
   negativePrompt: '',
   ratio: '1:1',
@@ -180,10 +213,15 @@ const form = reactive({
 
 // 文件列表
 const fileList = ref([])
+const uploadedImageUrl = ref('')
 
 // 生成状态
-const generatings = ref(false)
+const generating = ref(false)
+const progress = ref(0)
 const results = ref([])
+const recentTasks = ref([])
+const currentTaskId = ref('')
+let pollTimer = null
 
 // 上传前检查
 const beforeUpload = (file) => {
@@ -201,11 +239,105 @@ const beforeUpload = (file) => {
 }
 
 // 自定义上传
-const customRequest = ({ file, onSuccess }) => {
-  // TODO: 实际上传逻辑
-  setTimeout(() => {
-    onSuccess({ url: URL.createObjectURL(file) })
-  }, 1000)
+const customRequest = async ({ file, onSuccess, onError }) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.code === 200) {
+        uploadedImageUrl.value = data.data.url
+        onSuccess({ url: data.data.url })
+        message.success('图片上传成功')
+      } else {
+        onError(new Error(data.message || '上传失败'))
+        message.error('上传失败')
+      }
+    } else {
+      // 降级为本地预览
+      uploadedImageUrl.value = URL.createObjectURL(file)
+      onSuccess({ url: uploadedImageUrl.value })
+    }
+  } catch (error) {
+    // 降级为本地预览
+    uploadedImageUrl.value = URL.createObjectURL(file)
+    onSuccess({ url: uploadedImageUrl.value })
+  }
+}
+
+// 轮询任务状态
+const pollTaskStatus = async (taskId) => {
+  const maxAttempts = 120
+  const interval = 3000
+  let attempts = 0
+
+  const poll = async () => {
+    try {
+      attempts++
+      const data = await getImageTask(taskId)
+
+      if (data.status === 'completed') {
+        generating.value = false
+        progress.value = 100
+        if (data.output_urls && data.output_urls.length > 0) {
+          results.value = data.output_urls.map(url => ({
+            url,
+            prompt: form.prompt,
+          }))
+          message.success('图片生成完成')
+        }
+        loadRecentTasks()
+        return
+      }
+
+      if (data.status === 'failed') {
+        generating.value = false
+        progress.value = 0
+        message.error(data.error_message || '图片生成失败')
+        loadRecentTasks()
+        return
+      }
+
+      if (data.status === 'cancelled') {
+        generating.value = false
+        progress.value = 0
+        message.info('任务已取消')
+        loadRecentTasks()
+        return
+      }
+
+      // 更新进度
+      if (data.status === 'processing') {
+        progress.value = Math.min(90, 30 + attempts * 2)
+      }
+
+      if (attempts < maxAttempts) {
+        pollTimer = setTimeout(poll, interval)
+      } else {
+        generating.value = false
+        message.warning('查询超时，请稍后在历史记录中查看')
+        loadRecentTasks()
+      }
+    } catch (error) {
+      if (attempts < maxAttempts) {
+        pollTimer = setTimeout(poll, interval)
+      } else {
+        generating.value = false
+        message.error('查询任务状态失败')
+      }
+    }
+  }
+
+  poll()
 }
 
 // 生成图片
@@ -215,9 +347,17 @@ const handleGenerate = async () => {
     return
   }
 
-  generatings.value = true
+  if (form.mode === 'image2image' && !uploadedImageUrl.value) {
+    message.warning('请上传参考图片')
+    return
+  }
+
+  generating.value = true
+  progress.value = 10
+  results.value = []
+
   try {
-    const res = await createImageTask({
+    const data = await createImageTask({
       model: form.model,
       prompt: form.prompt,
       negative_prompt: form.negativePrompt,
@@ -225,15 +365,41 @@ const handleGenerate = async () => {
       resolution: form.resolution,
       num: form.num,
       mode: form.mode,
-      image_url: form.mode === 'image2image' ? fileList.value[0]?.url : undefined,
+      image_url: form.mode === 'image2image' ? uploadedImageUrl.value : undefined,
     })
-    
+
     message.success('生成任务已创建')
-    // TODO: 轮询任务状态，获取结果
+    progress.value = 20
+    currentTaskId.value = data.task_id || ''
+
+    // 开始轮询任务状态
+    if (data.task_id) {
+      pollTaskStatus(data.task_id)
+    }
   } catch (error) {
-    message.error('生成失败：' + error.message)
-  } finally {
-    generatings.value = false
+    generating.value = false
+    progress.value = 0
+    message.error('生成失败：' + (error.message || '未知错误'))
+  }
+}
+
+// 加载最近任务
+const loadRecentTasks = async () => {
+  try {
+    const data = await getImageTaskList({ page: 1, page_size: 5 })
+    recentTasks.value = data.items || []
+  } catch (error) {
+    // 静默失败
+  }
+}
+
+// 查看结果
+const viewResult = (item) => {
+  if (item.output_urls && item.output_urls.length > 0) {
+    results.value = item.output_urls.map(url => ({
+      url,
+      prompt: item.prompt,
+    }))
   }
 }
 
@@ -250,6 +416,55 @@ const copyPrompt = (prompt) => {
   navigator.clipboard.writeText(prompt)
   message.success('提示词已复制')
 }
+
+// 复制任务ID
+const copyTaskId = (taskId) => {
+  navigator.clipboard.writeText(taskId)
+  message.success('任务ID已复制')
+}
+
+// 获取状态颜色
+const getStatusColor = (status) => {
+  const colors = {
+    pending: 'default',
+    processing: 'processing',
+    completed: 'success',
+    failed: 'error',
+  }
+  return colors[status] || 'default'
+}
+
+// 获取状态文本
+const getStatusText = (status) => {
+  const texts = {
+    pending: '排队中',
+    processing: '生成中',
+    completed: '已完成',
+    failed: '失败',
+  }
+  return texts[status] || status
+}
+
+// 格式化时间
+const formatTime = (time) => {
+  return dayjs(time).format('MM-DD HH:mm')
+}
+
+// 截断文本
+const truncateText = (text, length) => {
+  if (!text) return ''
+  return text.length > length ? text.slice(0, length) + '...' : text
+}
+
+onMounted(() => {
+  loadRecentTasks()
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+  }
+})
 </script>
 
 <style scoped lang="less">
@@ -274,9 +489,27 @@ const copyPrompt = (prompt) => {
 
     .generating {
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
       height: 400px;
+      gap: 16px;
+
+      .generating-hint {
+        color: #666;
+      }
+
+      .task-id-hint {
+        color: #999;
+        font-size: 12px;
+        margin-top: 4px;
+      }
+    }
+
+    .task-id-label {
+      font-family: monospace;
+      font-size: 11px;
+      color: #999;
     }
 
     .result-item {

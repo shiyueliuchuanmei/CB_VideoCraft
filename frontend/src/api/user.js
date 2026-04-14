@@ -38,3 +38,13 @@ export const getUserSettings = () => {
 export const updateUserSettings = (data) => {
   return request.put('/users/me/settings', data)
 }
+
+// 获取任务统计
+export const getTaskStats = () => {
+  return request.get('/tasks/stats')
+}
+
+// 获取任务列表
+export const getTaskList = (params = {}) => {
+  return request.get('/tasks/list', { params })
+}

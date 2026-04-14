@@ -28,6 +28,8 @@ class VideoGenerationRequest(BaseModel):
     num: int = 1
     with_audio: bool = False
     image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    audio_url: Optional[str] = None
 
 
 @router.get("/models")
@@ -61,19 +63,37 @@ async def create_video_generation(
     try:
         await db.execute(
             text("""
-            INSERT INTO tasks (task_id, task_type, status, model, prompt, user_id, created_at)
-            VALUES (:task_id, 'video', 'pending', :model, :prompt, :user_id, :created_at)
+            INSERT INTO tasks (
+                task_id, task_type, status, model, prompt, negative_prompt,
+                mode, ratio, resolution, duration, num, with_audio,
+                input_image_url, user_id, created_at, updated_at
+            ) VALUES (
+                :task_id, :task_type, :status, :model, :prompt, :negative_prompt,
+                :mode, :ratio, :resolution, :duration, :num, :with_audio,
+                :input_image_url, :user_id, :created_at, :updated_at
+            )
             """),
             {
                 "task_id": task_id,
+                "task_type": "video",
+                "status": "pending",
                 "model": request.model,
                 "prompt": request.prompt,
-                "user_id": current_user["id"],
+                "negative_prompt": request.negative_prompt,
+                "mode": request.mode,
+                "ratio": request.ratio,
+                "resolution": request.resolution,
+                "duration": request.duration,
+                "num": request.num,
+                "with_audio": request.with_audio,
+                "input_image_url": request.image_url if request.mode in ("image2video", "multimodal") else None,
+                "user_id": current_user.id,
                 "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
             }
         )
         await db.commit()
-        
+
         background_tasks.add_task(
             generate_video,
             task_id=task_id,
@@ -87,7 +107,9 @@ async def create_video_generation(
             num=request.num,
             with_audio=request.with_audio,
             image_url=request.image_url,
-            user_id=current_user["id"]
+            user_id=current_user.id,
+            video_url=request.video_url,
+            audio_url=request.audio_url,
         )
         
         return {"code": 200, "data": {"task_id": task_id, "status": "pending"}}
@@ -107,7 +129,7 @@ async def get_video_generations(
 ):
     """获取视频生成任务列表"""
     try:
-        user_id = current_user["id"]
+        user_id = current_user.id
         
         # 获取视频任务列表
         result = await db.execute(
@@ -169,13 +191,28 @@ async def get_video_generation(
     """查询视频生成任务"""
     result = await db.execute(
         text("SELECT * FROM tasks WHERE task_id = :task_id AND user_id = :user_id"),
-        {"task_id": task_id, "user_id": current_user["id"]}
+        {"task_id": task_id, "user_id": current_user.id}
     )
     row = result.fetchone()
     
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
+    import json as _json
+    output_urls = _json.loads(row.output_urls) if row.output_urls else []
+
+    # 如果任务仍在处理中，查询最新状态
+    if row.status in ("pending", "processing"):
+        status_info = await check_task_status(task_id, "video")
+        if status_info.get("status") in ("completed", "failed"):
+            # 重新获取更新后的数据
+            result2 = await db.execute(
+                text("SELECT * FROM tasks WHERE task_id = :task_id AND user_id = :user_id"),
+                {"task_id": task_id, "user_id": current_user.id}
+            )
+            row = result2.fetchone()
+            output_urls = _json.loads(row.output_urls) if row.output_urls else []
+
     return {
         "code": 200,
         "data": {
@@ -183,5 +220,15 @@ async def get_video_generation(
             "status": row.status,
             "model": row.model,
             "prompt": row.prompt,
+            "negative_prompt": row.negative_prompt,
+            "mode": row.mode,
+            "ratio": row.ratio,
+            "resolution": row.resolution,
+            "duration": row.duration,
+            "with_audio": row.with_audio,
+            "output_urls": output_urls,
+            "error_message": row.error_message,
+            "created_at": row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else (row.created_at if row.created_at else None),
+            "completed_at": row.completed_at.isoformat() if row.completed_at and hasattr(row.completed_at, 'isoformat') else (row.completed_at if row.completed_at else None),
         }
     }

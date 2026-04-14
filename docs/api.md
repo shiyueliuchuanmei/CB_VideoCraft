@@ -1,4 +1,4 @@
-# VideoCraft API 文档
+# CB_VideoCraft API 文档
 
 ## 基础信息
 

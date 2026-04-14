@@ -1,4 +1,4 @@
-# VideoCraft 架构设计
+# CB_VideoCraft 架构设计
 
 ## 系统架构图
 
@@ -151,7 +151,7 @@ uploads/
 ```
 
 ### 阿里云 OSS（可选）
-- Bucket: videocraft-uploads
+- Bucket: cb-videocraft-uploads
 - 路径: `{user_id}/{date}/{filename}`
 
 ## 安全设计

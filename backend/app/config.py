@@ -1,34 +1,41 @@
 """
 应用配置
 """
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List
+
+# 项目根目录（backend/ 的上级）
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
     """应用配置类"""
     
     # 应用信息
-    APP_NAME: str = "VideoCraft"
+    APP_NAME: str = "CB_VideoCraft"
     DEBUG: bool = True
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
     
     # 服务器配置
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 8001
     
-    # 数据库配置
-    DATABASE_URL: str = "sqlite+aiosqlite:///./videocraft.db"
+    # 数据库配置 - 使用绝对路径，避免 CWD 不同导致数据库文件位置不一致
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{BASE_DIR / 'cb_videocraft.db'}"
     
     # Redis 配置
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # CORS 配置
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174"
+    CORS_ORIGINS: str = "http://localhost:5174"
     
     # 文件存储配置
     STORAGE_TYPE: str = "local"  # local 或 oss
-    LOCAL_STORAGE_PATH: str = "./uploads"
+    LOCAL_STORAGE_PATH: str = str(BASE_DIR / "uploads")
+    MAX_UPLOAD_SIZE: int = 104857600  # 100MB
+    UPLOAD_DIR: str = "uploads"
     
     # 阿里云 OSS 配置（可选）
     OSS_ACCESS_KEY_ID: str = ""
@@ -38,6 +45,7 @@ class Settings(BaseSettings):
     
     # 豆包 API 配置
     DOUBAO_API_KEY: str = ""
+    DOUBAO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     SEEDREAM_ENDPOINT: str = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
     SEEDANCE_ENDPOINT: str = "https://ark.cn-beijing.volces.com/api/v3/videos/generations"
     

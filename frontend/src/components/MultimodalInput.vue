@@ -116,14 +116,15 @@ const audioFileList = ref([])
 const previewVisible = ref(false)
 const previewImage = ref('')
 
-// 监听变化
+// 监听外部传入的变化
 watch(() => props.modelValue, (newVal) => {
-  content.text = newVal.text || ''
-  content.images = newVal.images || []
-  content.video = newVal.video || null
-  content.audio = newVal.audio || null
+  if (newVal.text !== content.text) content.text = newVal.text || ''
+  if (newVal.images !== content.images) content.images = newVal.images || []
+  if (newVal.video !== content.video) content.video = newVal.video || null
+  if (newVal.audio !== content.audio) content.audio = newVal.audio || null
 }, { deep: true })
 
+// 监听内部变化，向外发射
 watch(content, (newVal) => {
   emit('update:modelValue', { ...newVal })
 }, { deep: true })

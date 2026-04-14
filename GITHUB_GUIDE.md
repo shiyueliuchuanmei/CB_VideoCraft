@@ -88,7 +88,7 @@ C:\Users\EDY\.stepclaw\workspace\video-craft\.git
 ```
 
 提交记录：
-- 初始提交: `d627e68` - "Initial commit: VideoCraft - AI Video/Image Generation Platform"
+- 初始提交: `d627e68` - "Initial commit: CB_VideoCraft - AI Video/Image Generation Platform"
 - 61 个文件已提交
 
 ## 需要帮助？

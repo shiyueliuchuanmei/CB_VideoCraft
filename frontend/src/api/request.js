@@ -25,29 +25,38 @@ request.interceptors.request.use(
   }
 )
 
+// 401 处理标志，避免多个请求同时 401 时重复弹窗和跳转
+let isHandling401 = false
+
 // 响应拦截器
 request.interceptors.response.use(
   (response) => {
     const { data } = response
-    
+
     if (data.code !== 200) {
       message.error(data.message || '请求失败')
       return Promise.reject(new Error(data.message))
     }
-    
+
     return data.data
   },
   (error) => {
     const { response } = error
-    
+
     if (response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
-      message.error('登录已过期，请重新登录')
+      if (!isHandling401) {
+        isHandling401 = true
+        localStorage.removeItem('token')
+        message.error('登录已过期，请重新登录')
+        setTimeout(() => {
+          window.location.href = '/login'
+          isHandling401 = false
+        }, 500)
+      }
     } else {
       message.error(response?.data?.message || '网络错误')
     }
-    
+
     return Promise.reject(error)
   }
 )

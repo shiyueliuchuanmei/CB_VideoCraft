@@ -93,7 +93,7 @@ async def create_image_generation(
                 "resolution": request.resolution,
                 "num": request.num,
                 "input_image_url": request.image_url if request.mode == "image2image" else None,
-                "user_id": current_user["id"],
+                "user_id": current_user.id,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
             }
@@ -112,7 +112,7 @@ async def create_image_generation(
             resolution=request.resolution,
             num=request.num,
             image_url=request.image_url,
-            user_id=current_user["id"]
+            user_id=current_user.id
         )
         
         return {
@@ -142,7 +142,7 @@ async def get_image_generation(
             SELECT * FROM tasks 
             WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
             """),
-            {"task_id": task_id, "user_id": current_user["id"]}
+            {"task_id": task_id, "user_id": current_user.id}
         )
         
         row = result.fetchone()
@@ -168,8 +168,8 @@ async def get_image_generation(
                 "num": row.num,
                 "output_urls": json.loads(row.output_urls) if row.output_urls else [],
                 "error_message": row.error_message,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "created_at": row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else (row.created_at if row.created_at else None),
+                "completed_at": row.completed_at.isoformat() if row.completed_at and hasattr(row.completed_at, 'isoformat') else (row.completed_at if row.completed_at else None),
             }
         }
         
@@ -191,7 +191,7 @@ async def list_image_generations(
     try:
         # 构建查询条件
         where_clause = "WHERE user_id = :user_id AND task_type = 'image'"
-        params = {"user_id": current_user["id"]}
+        params = {"user_id": current_user.id}
         
         if status:
             where_clause += " AND status = :status"
@@ -259,7 +259,7 @@ async def cancel_image_generation(
             SELECT * FROM tasks 
             WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
             """),
-            {"task_id": task_id, "user_id": current_user["id"]}
+            {"task_id": task_id, "user_id": current_user.id}
         )
         
         row = result.fetchone()
@@ -303,7 +303,7 @@ async def delete_image_generation(
             SELECT * FROM tasks 
             WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
             """),
-            {"task_id": task_id, "user_id": current_user["id"]}
+            {"task_id": task_id, "user_id": current_user.id}
         )
         
         if not result.fetchone():
@@ -315,7 +315,7 @@ async def delete_image_generation(
             DELETE FROM tasks 
             WHERE task_id = :task_id AND user_id = :user_id
             """),
-            {"task_id": task_id, "user_id": current_user["id"]}
+            {"task_id": task_id, "user_id": current_user.id}
         )
         await db.commit()
         
