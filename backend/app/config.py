@@ -2,6 +2,7 @@
 应用配置
 """
 import os
+import warnings
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List
@@ -12,11 +13,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     """应用配置类"""
-    
+
     # 应用信息
-    APP_NAME: str = "CB_VideoCraft"
+    APP_NAME: str = "CC_VideoCraft"
+    APP_ENV: str = "development"
     DEBUG: bool = True
-    SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    SECRET_KEY: str = ""
     
     # 服务器配置
     HOST: str = "0.0.0.0"
@@ -43,6 +45,11 @@ class Settings(BaseSettings):
     OSS_BUCKET: str = ""
     OSS_ENDPOINT: str = ""
     
+    # 飞书（ Lark）OAuth 配置
+    FEISHU_APP_ID: str = ""
+    FEISHU_APP_SECRET: str = ""
+    FEISHU_REDIRECT_URI: str = "http://localhost:5174/api/auth/feishu/callback"
+
     # 豆包 API 配置
     DOUBAO_API_KEY: str = ""
     DOUBAO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
@@ -63,7 +70,28 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
+
+
+def _validate_settings(s: Settings):
+    """验证关键配置"""
+    # 生产环境验证
+    if s.APP_ENV == "production":
+        if not s.SECRET_KEY or len(s.SECRET_KEY) < 32:
+            raise ValueError(
+                "SECRET_KEY 必须设置且长度至少 32 字符！"
+                "生成方法：python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+    # 开发环境警告
+    elif s.DEBUG and not s.SECRET_KEY:
+        warnings.warn(
+            "警告：未设置 SECRET_KEY，生产环境请设置强密钥。",
+            UserWarning
+        )
 
 
 # 全局配置实例
 settings = Settings()
+
+# 验证配置
+_validate_settings(settings)

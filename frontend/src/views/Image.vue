@@ -149,6 +149,17 @@
                   <a-button shape="circle" @click="copyPrompt(item.prompt)">
                     <CopyOutlined />
                   </a-button>
+                  <a-button
+                    :type="item.isAdopted ? 'primary' : 'default'"
+                    :shape="item.isAdopted ? 'round' : 'circle'"
+                    :style="item.isAdopted ? { backgroundColor: '#52c41a', borderColor: '#52c41a', color: '#fff' } : {}"
+                    @click="toggleAdopt(item)"
+                  >
+                    <template #icon>
+                      <CheckOutlined v-if="item.isAdopted" />
+                      <StarOutlined v-else />
+                    </template>
+                  </a-button>
                 </div>
               </div>
               <p class="image-prompt">{{ item.prompt }}</p>
@@ -196,8 +207,10 @@ import {
   PictureOutlined,
   DownloadOutlined,
   CopyOutlined,
+  CheckOutlined,
+  StarOutlined,
 } from '@ant-design/icons-vue'
-import { createImageTask, getImageTask, getImageTaskList } from '@/api/image'
+import { createImageTask, getImageTask, getImageTaskList, adoptImage, unadoptImage } from '@/api/image'
 import dayjs from 'dayjs'
 
 // 表单数据
@@ -289,9 +302,12 @@ const pollTaskStatus = async (taskId) => {
         generating.value = false
         progress.value = 100
         if (data.output_urls && data.output_urls.length > 0) {
+          const adoptedUrls = data.adopted_urls || []
           results.value = data.output_urls.map(url => ({
             url,
             prompt: form.prompt,
+            taskId: taskId,
+            isAdopted: adoptedUrls.includes(url),
           }))
           message.success('图片生成完成')
         }
@@ -421,6 +437,23 @@ const copyPrompt = (prompt) => {
 const copyTaskId = (taskId) => {
   navigator.clipboard.writeText(taskId)
   message.success('任务ID已复制')
+}
+
+// 切换采用状态
+const toggleAdopt = async (item) => {
+  try {
+    if (item.isAdopted) {
+      await unadoptImage(item.taskId, item.url)
+      item.isAdopted = false
+      message.success('已取消采用')
+    } else {
+      await adoptImage(item.taskId, item.url)
+      item.isAdopted = true
+      message.success('图片已采用')
+    }
+  } catch (error) {
+    message.error('操作失败：' + (error.message || '未知错误'))
+  }
 }
 
 // 获取状态颜色

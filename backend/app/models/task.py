@@ -44,7 +44,10 @@ class Task(Base):
     
     # 输出结果
     output_urls = Column(Text, default="")  # JSON 数组
-    
+
+    # 被采用的图片 URL 列表（JSON 数组）
+    adopted_urls = Column(Text, default="")
+
     # 错误信息
     error_message = Column(Text, default="")
     
@@ -80,9 +83,10 @@ class Task(Base):
             "with_audio": self.with_audio,
             "input_image_url": self.input_image_url,
             "output_urls": json.loads(self.output_urls) if self.output_urls else [],
+            "adopted_urls": json.loads(self.adopted_urls) if self.adopted_urls else [],
             "error_message": self.error_message,
             "processing_time": self.processing_time,
             "cost": self.cost,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": self.created_at if isinstance(self.created_at, str) else (self.created_at.isoformat() if self.created_at else None),
+            "completed_at": self.completed_at if isinstance(self.completed_at, str) else (self.completed_at.isoformat() if self.completed_at else None),
         }

@@ -47,6 +47,12 @@ const routes = [
     meta: { title: '登录', public: true },
   },
   {
+    path: '/auth/feishu/callback',
+    name: 'FeishuCallback',
+    component: () => import('@/views/FeishuCallback.vue'),
+    meta: { title: '飞书登录中...', public: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFound.vue'),
@@ -63,7 +69,7 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   
   // 设置页面标题
-  document.title = to.meta.title ? `${to.meta.title} - CB_VideoCraft` : 'CB_VideoCraft'
+  document.title = to.meta.title ? `${to.meta.title} - CC_VideoCraft` : 'CC_VideoCraft'
   
   // 检查是否需要登录
   if (!to.meta.public && !userStore.token) {

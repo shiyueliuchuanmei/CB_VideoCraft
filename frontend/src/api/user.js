@@ -48,3 +48,13 @@ export const getTaskStats = () => {
 export const getTaskList = (params = {}) => {
   return request.get('/tasks/list', { params })
 }
+
+// 获取飞书授权 URL
+export const getFeishuAuthUrl = () => {
+  return request.get('/auth/feishu/authorize')
+}
+
+// 飞书登录回调
+export const feishuCallback = (data) => {
+  return request.post('/auth/feishu/callback', null, { params: data })
+}

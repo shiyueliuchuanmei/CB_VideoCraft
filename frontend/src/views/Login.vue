@@ -3,7 +3,7 @@
     <div class="login-container">
       <div class="login-header">
         <img src="@/assets/logo.svg" alt="logo" class="logo" />
-        <h1>CB_VideoCraft</h1>
+        <h1>CC_VideoCraft</h1>
         <p>电商视频智能创作平台</p>
       </div>
       
@@ -58,6 +58,18 @@
                   登录
                 </a-button>
               </a-form-item>
+
+              <a-divider>其他方式登录</a-divider>
+
+              <a-button size="large" block @click="handleFeishuLogin">
+                <template #icon>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                    <path d="M8 12l3 3 5-5-1.5-1.5L10 13l-1.5-1.5L8 12z"/>
+                  </svg>
+                </template>
+                飞书登录
+              </a-button>
             </a-form>
           </a-tab-pane>
           
@@ -133,7 +145,7 @@
       </a-card>
       
       <div class="login-footer">
-        <p>© 2026 CB_VideoCraft. All rights reserved.</p>
+        <p>© 2026 CC_VideoCraft. All rights reserved.</p>
       </div>
     </div>
     
@@ -162,7 +174,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { login, register } from '@/api/user'
+import { login, register, getFeishuAuthUrl } from '@/api/user'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -280,6 +292,16 @@ const handleForgot = () => {
   }
   message.success('重置密码邮件已发送')
   showForgot.value = false
+}
+
+// 飞书登录
+const handleFeishuLogin = async () => {
+  try {
+    const res = await getFeishuAuthUrl()
+    window.location.href = res.url
+  } catch (error) {
+    message.error('获取飞书授权链接失败')
+  }
 }
 </script>
 

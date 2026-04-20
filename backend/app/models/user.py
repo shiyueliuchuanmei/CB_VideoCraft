@@ -11,11 +11,12 @@ from app.database import Base
 class User(Base):
     """用户表"""
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=True)
     name = Column(String(100), nullable=False)
-    hashed_password = Column(String(255), nullable=False)
+    hashed_password = Column(String(255), nullable=True)
+    feishu_union_id = Column(String(255), unique=True, index=True, nullable=True)
     avatar = Column(String(500), default="")
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
@@ -43,5 +44,5 @@ class User(Base):
             "name": self.name,
             "avatar": self.avatar,
             "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": self.created_at if isinstance(self.created_at, str) else (self.created_at.isoformat() if self.created_at else None),
         }

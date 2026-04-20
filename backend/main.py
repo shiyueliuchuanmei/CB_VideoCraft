@@ -1,9 +1,9 @@
 """
-CB_VideoCraft 后端入口文件
+CC_VideoCraft 后端入口文件
 """
 import os
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -42,6 +42,7 @@ app.include_router(tasks.router, prefix="/api/tasks", tags=["任务"])
 # 文件上传接口
 @app.post("/api/upload")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     current_user=Depends(get_current_user)
 ):
@@ -58,9 +59,15 @@ async def upload_file(
     ensure_directory(settings.LOCAL_STORAGE_PATH)
 
     # 保存文件
-    url = await save_file(content, file.filename, folder="uploads")
+    relative_url = await save_file(content, file.filename, folder="uploads")
 
-    return {"code": 200, "data": {"url": url}}
+    # 构造完整的 URL（用于外部 API 访问）
+    # 获取请求的 host 和协议
+    scheme = request.headers.get('x-forwarded-proto', 'http')
+    host = request.headers.get('host', f'{settings.HOST}:{settings.PORT}')
+    full_url = f"{scheme}://{host}{relative_url}"
+
+    return {"code": 200, "data": {"url": full_url}}
 
 
 # 静态文件

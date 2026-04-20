@@ -12,7 +12,9 @@ from passlib.context import CryptContext
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.services.feishu import feishu_service
 from pydantic import BaseModel, EmailStr
+import secrets
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -150,3 +152,62 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
 async def get_me(current_user: User = Depends(get_current_user)):
     """获取当前用户信息"""
     return {"code": 200, "data": current_user.to_dict()}
+
+
+@router.get("/feishu/authorize", response_model=dict)
+async def feishu_authorize():
+    """获取飞书授权 URL"""
+    state = secrets.token_urlsafe(16)
+    auth_url = feishu_service.get_authorization_url(state)
+    return {"code": 200, "data": {"url": auth_url}}
+
+
+@router.post("/feishu/callback", response_model=dict)
+async def feishu_callback(code: str, db: AsyncSession = Depends(get_db)):
+    """飞书 OAuth 回调处理"""
+    if not code:
+        raise HTTPException(status_code=400, detail="缺少授权码")
+
+    try:
+        token_data = await feishu_service.get_access_token(code)
+        access_token = token_data.get("access_token")
+
+        user_info = await feishu_service.get_user_info(access_token)
+        feishu_union_id = user_info.get("union_id")
+        name = user_info.get("name", "飞书用户")
+        avatar = user_info.get("avatar_url", "")
+        email = user_info.get("email", "")
+
+        result = await db.execute(select(User).where(User.feishu_union_id == feishu_union_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            user = User(
+                email=email or None,
+                name=name,
+                feishu_union_id=feishu_union_id,
+                avatar=avatar,
+            )
+            db.add(user)
+        else:
+            user.name = name
+            user.avatar = avatar
+            if email:
+                user.email = email
+
+        user.last_login = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(user)
+
+        access_token = create_access_token(data={"sub": str(user.id)})
+
+        return {
+            "code": 200,
+            "data": {
+                "token": access_token,
+                "token_type": "bearer",
+                "user": user.to_dict(),
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"飞书登录失败: {str(e)}")

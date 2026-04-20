@@ -17,6 +17,17 @@ from app.services.doubao import generate_image, check_task_status
 router = APIRouter()
 
 
+def _format_datetime(dt):
+    """安全格式化日期时间"""
+    if not dt:
+        return None
+    if isinstance(dt, str):
+        return dt
+    if hasattr(dt, 'isoformat'):
+        return dt.isoformat()
+    return str(dt)
+
+
 # 请求模型
 class ImageGenerationRequest(BaseModel):
     model: str = "seedream-2-0"
@@ -168,8 +179,8 @@ async def get_image_generation(
                 "num": row.num,
                 "output_urls": json.loads(row.output_urls) if row.output_urls else [],
                 "error_message": row.error_message,
-                "created_at": row.created_at.isoformat() if row.created_at and hasattr(row.created_at, 'isoformat') else (row.created_at if row.created_at else None),
-                "completed_at": row.completed_at.isoformat() if row.completed_at and hasattr(row.completed_at, 'isoformat') else (row.completed_at if row.completed_at else None),
+                "created_at": _format_datetime(row.created_at),
+                "completed_at": _format_datetime(row.completed_at),
             }
         }
         
@@ -227,8 +238,8 @@ async def list_image_generations(
                 "resolution": row.resolution,
                 "num": row.num,
                 "output_urls": json.loads(row.output_urls) if row.output_urls else [],
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "created_at": _format_datetime(row.created_at),
+                "completed_at": _format_datetime(row.completed_at),
             })
         
         return {
@@ -300,31 +311,147 @@ async def delete_image_generation(
         # 查询任务是否存在
         result = await db.execute(
             text("""
-            SELECT * FROM tasks 
+            SELECT * FROM tasks
             WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
             """),
             {"task_id": task_id, "user_id": current_user.id}
         )
-        
+
         if not result.fetchone():
             raise HTTPException(status_code=404, detail="任务不存在")
-        
+
         # 删除任务
         await db.execute(
             text("""
-            DELETE FROM tasks 
+            DELETE FROM tasks
             WHERE task_id = :task_id AND user_id = :user_id
             """),
             {"task_id": task_id, "user_id": current_user.id}
         )
         await db.commit()
-        
+
         return {"code": 200, "message": "任务已删除"}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
+
+
+@router.post("/adopt")
+async def adopt_image(
+    task_id: str,
+    url: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """采用指定的图片"""
+    try:
+        result = await db.execute(
+            text("""
+            SELECT * FROM tasks
+            WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
+            """),
+            {"task_id": task_id, "user_id": current_user.id}
+        )
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        adopted_urls = json.loads(row.adopted_urls) if row.adopted_urls else []
+        if url not in adopted_urls:
+            adopted_urls.append(url)
+
+        await db.execute(
+            text("""
+            UPDATE tasks SET adopted_urls = :adopted_urls, updated_at = :updated_at
+            WHERE task_id = :task_id
+            """),
+            {"task_id": task_id, "adopted_urls": json.dumps(adopted_urls), "updated_at": datetime.utcnow()}
+        )
+        await db.commit()
+
+        return {"code": 200, "message": "图片已采用", "data": {"adopted_urls": adopted_urls}}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"采用失败: {str(e)}")
+
+
+@router.delete("/adopt")
+async def unadopt_image(
+    task_id: str,
+    url: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """取消采用图片"""
+    try:
+        result = await db.execute(
+            text("""
+            SELECT * FROM tasks
+            WHERE task_id = :task_id AND user_id = :user_id AND task_type = 'image'
+            """),
+            {"task_id": task_id, "user_id": current_user.id}
+        )
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        adopted_urls = json.loads(row.adopted_urls) if row.adopted_urls else []
+        if url in adopted_urls:
+            adopted_urls.remove(url)
+
+        await db.execute(
+            text("""
+            UPDATE tasks SET adopted_urls = :adopted_urls, updated_at = :updated_at
+            WHERE task_id = :task_id
+            """),
+            {"task_id": task_id, "adopted_urls": json.dumps(adopted_urls), "updated_at": datetime.utcnow()}
+        )
+        await db.commit()
+
+        return {"code": 200, "message": "已取消采用", "data": {"adopted_urls": adopted_urls}}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"取消采用失败: {str(e)}")
+
+
+@router.get("/adopted")
+async def list_adopted_images(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取用户采用的所有图片"""
+    try:
+        result = await db.execute(
+            text("""
+            SELECT * FROM tasks
+            WHERE user_id = :user_id AND task_type = 'image' AND adopted_urls != '' AND adopted_urls != '[]'
+            ORDER BY updated_at DESC
+            """),
+            {"user_id": current_user.id}
+        )
+
+        adopted_images = []
+        for row in result.fetchall():
+            adopted_urls = json.loads(row.adopted_urls) if row.adopted_urls else []
+            for url in adopted_urls:
+                adopted_images.append({
+                    "task_id": row.task_id,
+                    "url": url,
+                    "prompt": row.prompt,
+                    "model": row.model,
+                    "created_at": _format_datetime(row.created_at),
+                })
+
+        return {"code": 200, "data": {"items": adopted_images, "total": len(adopted_images)}}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
 
 
 def _calculate_progress(status: str) -> int:
